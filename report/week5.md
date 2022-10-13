@@ -1,6 +1,10 @@
 # 复活r eBPF 所在的rcore环境
 
-由于各种原因，需要复活一下。这里基于的是叶圣的仓库 https://github.com/yesh0/rCore/blob/changelog/kernel/docs/2022F/Changelog.org
+在尝试改进之前，首先要做到复现之前的成果。
+
+这里基于的是叶圣辉的仓库（因为上周讨论时他提出修了一些上游的bug）
+
+ https://github.com/yesh0/rCore/blob/changelog/kernel/docs/2022F/Changelog.org
 
 ### 配置环境
 
@@ -49,12 +53,33 @@ cd ..
     error: instruction requires the following: 'C' (Compressed Instructions)
       c.addi16sp sp, 32
 
-- 运行任意一个ucore程序会page fault
+  - 这个好像暂时不影响，先不管
+
+- 运行某些ucore程序会page fault
 
   - `./ucore/hello` 
+  - 这里希望的是运行eBPF-test，这个运行成功大概也表明复现的差不多了。
 
 - 会有几个error说kprobe already exists，需要看下是什么原因
 
 
 
-暂时先这样 @10.10
+<del>暂时先这样 @10.10</del>
+
+### page fault
+
+和ysh以及ssf讨论了一下:
+
+```
+我试了一下暂时 badarg 看起来是没对用户指针校验, rCore page fault 有个todo，说明可能有地方没写完
+然后看起来 ucore 的 sleep 实现只在 x86_64 上测试过，不兼容 riscv……内核期待一个指针它传了时间值。
+不知道还有没有其它的 ABI 不兼容
+
+```
+
+为了确定这个是eBPF的问题还是rCore的问题，roll back到latte-C 那个版本最初的部分。
+
+发现对于C程序仍有问题。正在搞 @10.13
+
+
+
