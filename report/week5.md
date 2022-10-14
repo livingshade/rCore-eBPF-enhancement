@@ -79,7 +79,28 @@ cd ..
 
 为了确定这个是eBPF的问题还是rCore的问题，roll back到latte-C 那个版本最初的部分。
 
-发现对于C程序仍有问题。正在搞 @10.13
+发现对于C程序仍有问题。<del>正在搞 @10.13 </del>
+
+经过不断的	`make clean, make run`和 `debug!` ，定位到了fs对这个elf解析的问题。
+
+与此同时，为了避免走弯路，我还联系了hzx。
+
+hzx表示可能是因为muslgcc 工具链版本的问题，他们当时的主版本是9，而我们用的是11，rCore并没有锁这个版本。
+
+看了一下ucore测例到ELF，可以看到有些符号在0x0，hzx表明这可能是默认链接行为的不同导致的。因为rCore并没有单独为uCore写链接脚本。
+
+此时有两种解决方案
+
+- 换成9版本的muslgcc，但是unfortunately musl.cc 上不能找到9版本的，这是因为 
+
+  **2021-03-01** Release GCC 5, 6, 7, 8, 9, 10 toolchains
+  \- **All previous toolchains were lost due to catastrophic disk failure. Rebuilt / rebuilding.**
+
+  hzx表示不太能直接给我发9版本的，所以考虑手动编译，但是好像比较麻烦，暂时搁置。
+
+- 手动写一个链接脚本 .ld ,这样就能与musl版本无关了，目前我正在研究这个方面。
+
+@10.14
 
 
 
