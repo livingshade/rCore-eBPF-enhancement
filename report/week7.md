@@ -169,6 +169,14 @@ callq  7fb0 <<core::future::from_generator::GenFuture<T> as core::future::future
 
 以上分析都是基于unoptimized + debuginfo的版本，release模式下closure都消失了，似乎直接被合并到了poll里，poll里很多call变成了_GLOBAL_OFFSET_TABLE_寻址。当然可能是因为这个例子里的async实际上没有阻塞，全被优化了。
 
+## async跟踪
+
+如果是没有被优化的async函数，可以把符号表里的每个poll与对应的async函数对应，然后根据poll的调用判断async函数的进程实现跟踪，不过这个不知道有什么用，还是先考虑函数入口出口的跟踪。可能只需要把普通函数的返回地址变成closure最后结束的地址就行了。
+
+关于tokio-console：`To instrument your asynchronous application, you must be using an async runtime that supports the tracing instrumentation required by the console. Currently, the only runtime that implements this instrumentation is Tokio version 1.7.0 and newer.`
+
+也就是说需要rutime的支持。
+
 ## kprobe规范
 
 linux文档[kprobe doc](https://docs.kernel.org/trace/kprobes.html)
