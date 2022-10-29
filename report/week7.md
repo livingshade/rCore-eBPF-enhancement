@@ -277,5 +277,7 @@ invalid:
 
 `Typically returns @addr + @offset, except for special cases where the function might be prefixed by a CFI landing pad, in that case any offset inside the landing pad is mapped to the first 'real' instruction of the symbol.`
 
+不过这部分和probe独立，可以先不考虑。
+
 ## BPF BTF
 看了[文档](https://docs.kernel.org/bpf/btf.html)但是还是不太清楚，好像和probe定位没啥关系。
