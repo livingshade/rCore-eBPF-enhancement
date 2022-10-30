@@ -127,6 +127,14 @@ struct fd(i32);
 ## zCore
 
 - kernel allocator需要实现
+
 - eBPF模块需要jit的部分，这里应该可以原样使用。
+
 - 需要看懂代码。
+
+  ```rust
+  pub fn frame_alloc() -> Option<PhysAddr> 
+  ```
+
+  
 
