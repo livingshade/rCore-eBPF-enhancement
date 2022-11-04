@@ -127,17 +127,157 @@ struct bpf_object {
 
 	char path[];
 };
+
+struct bpf_program {
+        char *name;
+        char *sec_name;
+        size_t sec_idx;
+        const struct bpf_sec_def *sec_def;
+        /* this program's instruction offset (in number of instructions)
+         * within its containing ELF section
+         */
+        size_t sec_insn_off;
+        /* number of original instructions in ELF section belonging to this
+         * program, not taking into account subprogram instructions possible
+         * appended later during relocation
+         */
+			  size_t sec_insn_cnt;
+        /* Offset (in number of instructions) of the start of instruction
+         * belonging to this BPF program  within its containing main BPF
+         * program. For the entry-point (main) BPF program, this is always
+         * zero. For a sub-program, this gets reset before each of main BPF
+         * programs are processed and relocated and is used to determined
+         * whether sub-program was already appended to the main program, and
+         * if yes, at which instruction offset.
+         */
+        size_t sub_insn_off;
+
+        /* instructions that belong to BPF program; insns[0] is located at
+         * sec_insn_off instruction within its ELF section in ELF file, so
+         * when mapping ELF file instruction index to the local instruction,
+         * one needs to subtract sec_insn_off; and vice versa.
+         */
+        struct bpf_insn *insns;
+  
+        /* actual number of instruction in this BPF program's image; for
+         * entry-point BPF programs this includes the size of main program
+         * itself plus all the used sub-programs, appended at the end
+         */
+  			size_t insns_cnt;
+        struct reloc_desc *reloc_desc;
+        int nr_reloc;
+
+        /* BPF verifier log settings */
+        char *log_buf;
+        size_t log_size;
+        __u32 log_level;
+        struct bpf_object *obj;
+
+        int fd;
+        bool autoload;
+        bool autoattach;
+        bool mark_btf_static;
+        enum bpf_prog_type type;
+        enum bpf_attach_type expected_attach_type;
+          int prog_ifindex;
+        __u32 attach_btf_obj_fd;
+        __u32 attach_btf_id;
+        __u32 attach_prog_fd;
+
+        void *func_info;
+        __u32 func_info_rec_size;
+        __u32 func_info_cnt;
+
+        void *line_info;
+        __u32 line_info_rec_size;
+        __u32 line_info_cnt;
+        __u32 prog_flags;
+};
+
+struct bpf_map {
+        struct bpf_object *obj;
+        char *name;
+        /* real_name is defined for special internal maps (.rodata*,
+         * .data*, .bss, .kconfig) and preserves their original ELF section
+         * name. This is important to be be able to find corresponding BTF
+         * DATASEC information.
+         */
+        char *real_name;
+        int fd;
+        int sec_idx;
+        size_t sec_offset;
+        int map_ifindex;
+        int inner_map_fd;
+        struct bpf_map_def def;
+                __u32 numa_node;
+        __u32 btf_var_idx;
+        __u32 btf_key_type_id;
+        __u32 btf_value_type_id;
+        __u32 btf_vmlinux_value_type_id;
+        enum libbpf_map_type libbpf_type;
+        void *mmaped;
+        struct bpf_struct_ops *st_ops;
+        struct bpf_map *inner_map;
+        void **init_slots;
+        int init_slots_sz;
+        char *pin_path;
+        bool pinned;
+        bool reused;
+        bool autocreate;
+        __u64 map_extra;
+};
+
 ```
 
 可以看到，linux kernel里面并不是一个object对应一个map 或者prog的，而是很多很多。
 
 这种实际上给模块化带来一定问题，另一方面，这个以来的rv JIT 实际上与这个是深度耦合的，虽然表面上是不同的crate，但是并不完全合理。
 
-所以迁移时我应当进行一定的修改。另一方面，也要以“跑起来”为目的，不要改太多。
-
-### 解析elf
+这里目前的做法就是抽象出一个表示elf的object，但是底下还是以prog或者map作为主体。
 
 
+
+### 和kprobe链接
+
+目前的实现是这样的
+
+```rust
+fn bpf_prog_attach(target: str, fd: i32) {
+    addr = resolve_symbol(target)
+  	ctx = kprobe_context::from(addr)
+    prog = find_prog_by_fd(fd)
+    handler = bpf_generate_handler(prog, ctx)
+    kprobe = KProbe{
+      paddr = addr,
+      handler = handler,
+  }
+  // note that there can be multiple prog attach to one tracepoint
+  // a vector of prog is needed, but we omit that
+    sys_register_kprobe(kprobe);
+}
+
+
+```
+
+这里和kprobe有关。这里问题在于trapframe的移植，目前使用的是TrapFrame 0.9
+
+## 移植zCore
+
+https://github.com/cubele/zCore
+
+一边改一边学习zCore。
+
+根据杨德睿工程师的指导，大概结构是这样的
+
+```
+				 <--- linux_syscall (i.e. memory)
+z_object <--- linux_object  <--- linux_syscall (i.e. ipc)
+         <--- z_syscall
+```
+
+所以我们的实现都是应该放在 z_object 里，然后看情况是否需要添加 linux_object 来实现对应的syscall
+
+目前还在写。
 
 ## 远期目标
 
