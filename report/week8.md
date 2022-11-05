@@ -1,364 +1,39 @@
-## 现有的不足之处
+## kprobe移植
 
-对于 eBPF object并不完全，但是eBPF本身需要对 elf 进行很多的解析工作，这方面需要拓展。而且最关键的是，之前的做法是手动 `bpf_prog_load_ex` 来加载.o的，其中需要手动传一个 `*struct* bpf_map_fd_entry` 。而这些并不是linux的标准，这些系统调用也不存在。
+### 锁
+如果断点在中断处理里，那么probe函数本身也相当于中断处理函数，需要使用禁止中断的锁结构防止死锁。
 
-```C
-void test_bpf_prog() {
-    int map_fd = create_map();
+[linux文档](https://www.kernel.org/doc/Documentation/locking/spinlocks.txt)讲了spinlock是否disable中断的两个版本，zCore好像直接默认使用了禁止中断的版本。rCore上实现的probe因为没考虑中断（内核态直接禁用了中断？）所以直接用了普通的spinlock，需要换一下。
 
-    struct stat stat;
-    int fd = open("./map.o", O_RDONLY);
-    if (fd < 0) {
-        cprintf("open file failed!\n");
-        return;
-    }
-    unsigned *p = (unsigned *) ret;
-    read(fd, p, prog_size);
-    cprintf("ELF content: %x %x %x %x\n", p[0], p[1], p[2], p[3]);
+### zCore
+和OS耦合性较强的是内存分配部分，需要一些物理页作为跳板或者指令缓存。具体需求就是往一个物理页里写指令然后把PC重定向到这个页里，然后如果是uprobe的话还要把这个页map到对应的用户地址空间里。
 
-    struct bpf_map_fd_entry map_array[] = {
-        { .name = "map_fd", .fd = map_fd },
-    };
-    int bpf_fd = bpf_prog_load_ex(p, prog_size, map_array, 1);
-    cprintf("load ex: %x\n", bpf_fd);
+rCore根据[blogOS的实现](https://os.phil-opp.com/paging-implementation/)把整个物理内存默认map到了虚拟内存里的一个OFFSET后面，让内核可以直接访问。zCore的话要参考参考[Zircon 内存管理模型](http://rcore-os.cn/zCore-Tutorial/ch03-01-zircon-memory.html)。物理页以及对应虚拟地址对应一个VMO/VMAR对象，kprobe需要持有这个对象的Handle以进行交互。
 
-    const char *target = "kprobe:<rcore::syscall::Syscall>::sys_fork";
-    cprintf("attach: %d\n", bpf_prog_attach(target, bpf_fd));
-    close(fd);
-}
+具体实现：新建一个Vmo给kprobe持有，commit申请物理帧作为指令缓存区，应该可以RAII。zCore好像也是直接用OFFSET实现内核访存，直接用kernel-hal里的接口转换虚实地址就行。
+
+### 问题
 ```
-
-对比一下C中 `bpf_object` 的定义
-
-```C
-// latte-c
-union bpf_attr {
-    struct {
-        uint32_t map_type;
-        uint32_t key_size;
-        uint32_t value_size;
-        uint32_t max_entries;
-        // more...
-    };
-
-    struct {
-        uint32_t map_fd;
-        uint64_t key;
-        union {
-            uint64_t value;
-            uint64_t next_key;
-        };
-        uint64_t flags;
-    };
-
-    // for custom BPF_PROG_LOAD_EX
-    struct {
-        uint64_t prog;
-        uint32_t prog_size;
-		uint32_t map_array_len;
-		struct bpf_map_fd_entry *map_array;
-    };
-
-	// for custom BPF_PROG_ATTACH
-	struct {
-		const char *target;
-		uint32_t prog_fd;
-	};
-};
-
-// linux
-struct bpf_object {
-	char name[BPF_OBJ_NAME_LEN];
-	char license[64];
-	__u32 kern_version;
-
-	struct bpf_program *programs;
-	size_t nr_programs;
-	struct bpf_map *maps;
-	size_t nr_maps;
-	size_t maps_cap;
-	struct bpf_secdata sections;
-
-	bool loaded;
-	bool has_pseudo_calls;
-	bool relaxed_core_relocs;
-
-	/*
-	 * Information when doing elf related work. Only valid if fd
-	 * is valid.
-	 */
-	struct {
-		int fd;
-		const void *obj_buf;
-		size_t obj_buf_sz;
-		Elf *elf;
-		GElf_Ehdr ehdr;
-		Elf_Data *symbols;
-		Elf_Data *data;
-		Elf_Data *rodata;
-		Elf_Data *bss;
-		size_t strtabidx;
-		struct {
-			GElf_Shdr shdr;
-			Elf_Data *data;
-		} *reloc;
-		int nr_reloc;
-		int maps_shndx;
-		int btf_maps_shndx;
-		int text_shndx;
-		int data_shndx;
-		int rodata_shndx;
-		int bss_shndx;
-	} efile;
-	/*
-	 * All loaded bpf_object is linked in a list, which is
-	 * hidden to caller. bpf_objects__<func> handlers deal with
-	 * all objects.
-	 */
-	struct list_head list;
-
-	struct btf *btf;
-	struct btf_ext *btf_ext;
-
-	void *priv;
-	bpf_object_clear_priv_t clear_priv;
-
-	struct bpf_capabilities caps;
-
-	char path[];
-};
-
-struct bpf_program {
-        char *name;
-        char *sec_name;
-        size_t sec_idx;
-        const struct bpf_sec_def *sec_def;
-        /* this program's instruction offset (in number of instructions)
-         * within its containing ELF section
-         */
-        size_t sec_insn_off;
-        /* number of original instructions in ELF section belonging to this
-         * program, not taking into account subprogram instructions possible
-         * appended later during relocation
-         */
-			  size_t sec_insn_cnt;
-        /* Offset (in number of instructions) of the start of instruction
-         * belonging to this BPF program  within its containing main BPF
-         * program. For the entry-point (main) BPF program, this is always
-         * zero. For a sub-program, this gets reset before each of main BPF
-         * programs are processed and relocated and is used to determined
-         * whether sub-program was already appended to the main program, and
-         * if yes, at which instruction offset.
-         */
-        size_t sub_insn_off;
-
-        /* instructions that belong to BPF program; insns[0] is located at
-         * sec_insn_off instruction within its ELF section in ELF file, so
-         * when mapping ELF file instruction index to the local instruction,
-         * one needs to subtract sec_insn_off; and vice versa.
-         */
-        struct bpf_insn *insns;
-  
-        /* actual number of instruction in this BPF program's image; for
-         * entry-point BPF programs this includes the size of main program
-         * itself plus all the used sub-programs, appended at the end
-         */
-  			size_t insns_cnt;
-        struct reloc_desc *reloc_desc;
-        int nr_reloc;
-
-        /* BPF verifier log settings */
-        char *log_buf;
-        size_t log_size;
-        __u32 log_level;
-        struct bpf_object *obj;
-
-        int fd;
-        bool autoload;
-        bool autoattach;
-        bool mark_btf_static;
-        enum bpf_prog_type type;
-        enum bpf_attach_type expected_attach_type;
-          int prog_ifindex;
-        __u32 attach_btf_obj_fd;
-        __u32 attach_btf_id;
-        __u32 attach_prog_fd;
-
-        void *func_info;
-        __u32 func_info_rec_size;
-        __u32 func_info_cnt;
-
-        void *line_info;
-        __u32 line_info_rec_size;
-        __u32 line_info_cnt;
-        __u32 prog_flags;
-};
-
-struct bpf_map {
-        struct bpf_object *obj;
-        char *name;
-        /* real_name is defined for special internal maps (.rodata*,
-         * .data*, .bss, .kconfig) and preserves their original ELF section
-         * name. This is important to be be able to find corresponding BTF
-         * DATASEC information.
-         */
-        char *real_name;
-        int fd;
-        int sec_idx;
-        size_t sec_offset;
-        int map_ifindex;
-        int inner_map_fd;
-        struct bpf_map_def def;
-                __u32 numa_node;
-        __u32 btf_var_idx;
-        __u32 btf_key_type_id;
-        __u32 btf_value_type_id;
-        __u32 btf_vmlinux_value_type_id;
-        enum libbpf_map_type libbpf_type;
-        void *mmaped;
-        struct bpf_struct_ops *st_ops;
-        struct bpf_map *inner_map;
-        void **init_slots;
-        int init_slots_sz;
-        char *pin_path;
-        bool pinned;
-        bool reused;
-        bool autocreate;
-        __u64 map_extra;
-};
-
+error: instruction requires the following: 'C' (Compressed Instructions)
+    c.addi16sp sp, 32
 ```
-
-可以看到，linux kernel里面并不是一个object对应一个map 或者prog的，而是很多很多。
-
-这种实际上给模块化带来一定问题，另一方面，这个以来的rv JIT 实际上与这个是深度耦合的，虽然表面上是不同的crate，但是并不完全合理。
-
-这里目前的做法就是抽象出一个表示elf的object，但是底下还是以prog或者map作为主体。
+这个报错之前rCore就有，现在发现是kprobe的test汇编里面写的，应该是新版本rust编译器的`global_asm!`特性变了，暂时不管。
 
 
+### adhoc
+在断点的时候要调用kprobe的处理函数。因为`trap_handler`在`kernal-hal`里，`kprobe`实现在`zircon-object`里，如果`kernel-hal`要调用这个handler就要引入整个`zircon-object`作为crate，就有了循环引用的问题。现在的解决方案是把`kprobe`的handler作为一个`extern "C"`符号放在`kernel-hal`里，然后在`kprobe`里实现这个函数。否则好像只能把`probe`独立出来作为一个crate放在最上层，这里怎么设计还要考虑一下。
 
-### 和kprobe链接
+写好以后遇到WRITE的page fault。用qemu看页表以后发现zCore的内核代码段是没有write权限的。于是在`kernel-hal`层改了`init_kernel_page_table()`里设置的权限。这样kprobe的setup就能完成了。之后又遇到指令buffer在data段不可以执行的问题，所以又改了这一段的权限。
 
-目前的实现是这样的
+虽然vmo在commit的时候设置了execute权限，但是可能因为commit获得的帧在内核init的时候已经被map过了，权限并没有被更改，后面要找一下正确的实现方法去改页表的权限。
 
-```rust
-fn bpf_prog_attach(target: str, fd: i32) {
-    addr = resolve_symbol(target)
-  	ctx = kprobe_context::from(addr)
-    prog = find_prog_by_fd(fd)
-    handler = bpf_generate_handler(prog, ctx)
-    kprobe = KProbe{
-      paddr = addr,
-      handler = handler,
-  }
-  // note that there can be multiple prog attach to one tracepoint
-  // a vector of prog is needed, but we omit that
-    sys_register_kprobe(kprobe);
-}
+现在可以正确执行`kprobes`的测试，以info方式输出。因为环境变量不管用所以直接在main里硬编码了log级别为info。
 
+## async trace
+Tokio的[async backtrace](https://tokio.rs/blog/2022-10-announcing-async-backtrace)，实现了一个宏，把这个宏套在async函数上就可以追踪，
 
-```
+这个宏做的事情大概是把每个future外面再包一层Future，从而可以跟踪这个Future被poll的状态，然后macro里面还可以用一些操作获取closure名称，代码位置等信息，追踪的方式就是用一个全局变量维护当前没完成的future。
 
-这里和kprobe有关。这里问题在于trapframe的移植，目前使用的是TrapFrame 0.9
+根据它的代码，直接追踪对应closure看来是正确的，他就是用一层wrapper看什么时候这些closure被调用以及什么之后执行完毕（也就是poll返回Done）。
 
-## 移植zCore
-
-https://github.com/cubele/zCore
-
-一边改一边学习zCore。
-
-根据杨德睿工程师的指导，大概结构是这样的
-
-```
-				 <--- linux_syscall (i.e. memory)
-z_object <--- linux_object  <--- linux_syscall (i.e. ipc)
-         <--- z_syscall
-```
-
-所以我们的实现都是应该放在 z_object 里，然后看情况是否需要添加 linux_object 来实现对应的syscall
-
-目前还在写。
-
-## 远期目标
-
-能够做到类似这样的效果
-
-```C
-// lathist_user.c
-int main(int argc, char **argv)
-{
-	struct bpf_link *links[2];
-	struct bpf_program *prog;
-	struct bpf_object *obj;
-	char filename[256];
-	int map_fd, i = 0;
-
-	snprintf(filename, sizeof(filename), "%s_kern.o", argv[0]);
-	obj = bpf_object__open_file(filename, NULL);
-
-	/* load BPF program */
-   bpf_object__load(obj)
-     
-	map_fd = bpf_object__find_map_fd_by_name(obj, "my_lat");
-	
-cleanup:
-	for (i--; i >= 0; i--)
-		bpf_link__destroy(links[i]);
-
-	bpf_object__close(obj);
-	return 0;
-}
-
-// lathist_kern.c
-
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, int);
-	__type(value, u64);
-	__uint(max_entries, MAX_CPU);
-} my_map SEC(".maps");
-
-SEC("kprobe/trace_preempt_off")
-int bpf_prog1(struct pt_regs *ctx)
-{
-	int cpu = bpf_get_smp_processor_id();
-	u64 *ts = bpf_map_lookup_elem(&my_map, &cpu);
-
-	if (ts)
-		*ts = bpf_ktime_get_ns();
-
-	return 0;
-}
-
-struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
-	__type(key, int);
-	__type(value, long);
-	__uint(max_entries, MAX_CPU * MAX_ENTRIES);
-} my_lat SEC(".maps");
-
-SEC("kprobe/trace_preempt_on")
-int bpf_prog2(struct pt_regs *ctx)
-{
-	u64 *ts, cur_ts, delta;
-	int key, cpu;
-	long *val;
-
-	cpu = bpf_get_smp_processor_id();
-	ts = bpf_map_lookup_elem(&my_map, &cpu);
-  
-	cur_ts = bpf_ktime_get_ns();
-	delta = log2l(cur_ts - *ts);
-	key = cpu * MAX_ENTRIES + delta;
-	val = bpf_map_lookup_elem(&my_lat, &key);
-	if (val)
-		__sync_fetch_and_add((long *)val, 1);
-
-	return 0;
-
-}
-
-```
-
-
-
+没有宏的情况下，DEBUG模式里其实可以直接找closure的call，但是什么时候结束就要看call之后的分支代码了，这个可能是可以静态分析然后probe的，他的宏就相当于强制插入了静态的跟踪点，其实动态插入也是有可能的。
