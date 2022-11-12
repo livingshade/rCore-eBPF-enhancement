@@ -30,6 +30,104 @@ rCore编译是类似于这样的结构
 
 还有不同的就是zCore里面直接用xtask作为编译的方法。为了加东西，也只能改一下里面的东西。
 
+首先，默认不会编译 test，需要 
+
+`cargo other-test --arch riscv64` 
+
+在编译的时候，它会从环境变量里找到 `riscv64-linux-musl-gcc`，然后枚举所有的 `.c` 
+
+### virtual memory
+
+很奇怪，不知道为啥么不需要过地址转换
+
+## 目前进展
+
+完成了bpf系统调用。可以attach在kprobe上输出对应的context。 这里kprobe根据石圣锋的symbol table进行解析。
+
+```shell
+cargo other-test --arch riscv64
+cargo qemu --arch riscv64
+....
+cd bin
+./loadprogex.exe
+```
+
+期望输出：（用error只是因为颜色比较明显，实际上不是error）
+
+```
+file size = 8696
+ELF content: 464c457f 10102 0 0
+[  5.376442 ERROR 0 0:0 linux_syscall::ebpf] SYS_bpf cmd: 1000, bpf_attr: 1113520, size: 32
+[  5.377013 ERROR 0 0:0 linux_syscall::ebpf] load program ex
+[  5.377865 ERROR 0 0:0 zircon_object::ebpf::program] bpf program load ex
+[  5.378642 ERROR 0 0:0 zircon_object::ebpf::program] map resolution finished
+[  5.379326 ERROR 0 0:0 zircon_object::ebpf::program] relocation finished
+[  5.381925 ERROR 0 0:0 zircon_object::ebpf::program] compile finished
+[  5.382484 ERROR 0 0:0 zircon_object::ebpf] inserted key(fd):1879048192
+[  5.383179 ERROR 0 0:0 zircon_object::ebpf::program] OK fd: 1879048192
+[  5.383930 ERROR 0 0:0 zircon_object::ebpf::syscall] load ex ret: 1879048192
+[  5.384494 ERROR 0 0:0 linux_syscall] syscall result: Ok(1879048192)
+load ex: 70000000
+target: kprobe$linux_syscall::file::fd::<impl linux_syscall::Syscall>::sys_openat len: 73
+bpf prog attach size: 32
+[  5.386030 ERROR 0 0:0 linux_syscall::ebpf] SYS_bpf cmd: 8, bpf_attr: 1113520, size: 32
+[  5.386557 ERROR 0 0:0 zircon_object::ebpf::syscall] target name str: kprobe$linux_syscall::file::fd::<impl linux_syscall::Syscall>::sys_openat
+[  5.387248 ERROR 0 0:0 zircon_object::ebpf::tracepoints] bpf prog attach target: kprobe$linux_syscall::file::fd::<impl linux_syscall::Syscall>::sys_openat 
+ fd:1879048192
+
+[  5.388097 ERROR 0 0:0 zircon_object::ebpf::tracepoints] found prog:!
+[  5.388548 ERROR 0 0:0 zircon_object::ebpf::tracepoints] prog found!
+[  5.389149 ERROR 0 0:0 zircon_object::ebpf::tracepoints] tracepoint parsed: type=KProbe fn=linux_syscall::file::fd::<impl linux_syscall::Syscall>::sys_openat
+[  5.389980 ERROR 0 0:0 zircon_object::ebpf::tracepoints] symbol resolved, symbol:linux_syscall::file::fd::<impl linux_syscall::Syscall>::sys_openat addr: ffffffc08023dcbe
+[  5.390988 ERROR 0 0:0 zircon_object::ebpf::tracepoints] kprobe registered at addr: ffffffc08023dcbe
+[  5.391662 ERROR 0 0:0 zircon_object::ebpf::tracepoints] OK
+[  5.392035 ERROR 0 0:0 linux_syscall] syscall result: Ok(0)
+```
+
+这部分是 load + attach bpf program
+
+这里是对sys open at 进行hook，可以看到输出之后 warn! 才进行输出，即在函数的第一条指令前运行。
+
+```
+triggered!
+kprobe  addr = 18446743800981478590
+r0  = 15727
+r1  = 18446743800981934634
+r2  = 18446743801130116720
+r3  = 1128448
+r4  = 0
+r5  = 1113456
+r6  = 18446743800981560960
+r7  = 315496
+r8  = 18446743800986203000
+r9  = 18446743800982145720
+r10 = 18446743801130116912
+r11 = 18446743800985733240
+r12 = 18446744073709551516
+r13 = 1117672
+r14 = 32768
+r15 = 0
+r16 = 0
+r17 = 0
+r18 = 18446743800985733320
+r19 = 18446743800985733264
+r20 = 18446743800985733240
+r21 = 18446743800986203000
+r22 = 18446743800985733120
+r23 = 18446743801130122976
+r24 = 18446743800984095808
+r25 = 0
+r26 = 18446743801130122976
+r27 = 18446743800985733264
+r28 = 111148
+r29 = 32
+r30 = 121
+r31 = 114
+[  5.396368 WARN  0 0:0 linux_syscall::file::fd] sys openat called!
+```
+
+
+
 ## eBPF helper functions
 
 ### thread/process related
@@ -85,13 +183,21 @@ pub fn os_current_thread() -> Arc<dyn ThreadLike> {
 
 ### bpf_trace_printk
 
-这个在linux里面实际上是像一个pseudo file写东西，类似于管道，作为内核log的输出方式。但是rCore直接是用了print! 这个宏来做。在zCore中也可以通过类似的方法做，不知道合不合适。
-
-
+这个在linux里面实际上是像一个pseudo file写东西，类似于管道，作为内核log的输出方式。但是rCore直接是用了print! 这个宏来做。在zCore中使用 kernel_hal::console 进行输出。
 
 ## refactor bpf map
 
 `syscall.rs` 是与OS相关的部分，这里采用linux的接口。
 
 其他部分是eBPF内部，使用内部定义的 `retcode.rs`, `const.rs` 中的enum，使用 `BpfResult` 作为返回值， 避免常量污染。
+
+但是目前还没有完全完成。
+
+## todo
+
+因为遇到了意想不到的问题，所以有些地方比较赶，所以优化下。
+
+bpf map 功能
+
+添加更多 helper functions，主要是bpf map的。
 
