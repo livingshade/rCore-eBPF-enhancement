@@ -54,3 +54,6 @@ DW_TAG_inlined_subroutine
 既然gdb在optimized的情况下可以用这些debuginfo对应到行号，那probe肯定是可以的，相当于内核里内嵌自己的debuginfo以及gdb的部分功能。
 
 从这里找async的中间过程应该会清晰一些，因为被优化掉的符号都出来了，还在研究。
+
+## zCore
+帮刘圣debug zCore的地址问题，同时教刘圣怎么使用键盘。
