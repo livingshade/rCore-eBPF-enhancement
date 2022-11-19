@@ -57,5 +57,3 @@ DW_TAG_inlined_subroutine
 
 ## zCore
 debug ebpf程序出现的page fault，教会刘圣用键盘调出qemu console的正确时序。
-
-info mem看页表，发现地址不在页表里，似乎还在用rCore的地址规范。
