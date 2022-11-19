@@ -56,4 +56,6 @@ DW_TAG_inlined_subroutine
 从这里找async的中间过程应该会清晰一些，因为被优化掉的符号都出来了，还在研究。
 
 ## zCore
-帮刘圣debug zCore的地址问题，同时教刘圣怎么使用键盘。
+debug ebpf程序出现的page fault，教会刘圣用键盘调出qemu console的正确时序。
+
+info mem看页表，发现地址不在页表里，似乎还在用rCore的地址规范。
