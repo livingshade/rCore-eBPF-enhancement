@@ -506,3 +506,4 @@ struct linux_syscall::{impl#0}::syscall::{async_fn_env#0}::Suspend17
 		120[64]	__awaitee: struct core::future::from_generator::GenFuture<linux_syscall::{impl#0}::riscv64_syscall::{async_fn_env#0}>
 		184[1168]	<padding>
 ```
+https://swatinem.de/blog/async-codegen/
