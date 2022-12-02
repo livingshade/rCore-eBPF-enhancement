@@ -16,7 +16,6 @@ git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ${ZSH_CUSTOM:-$
 略，可能要`rustup default nightly`。
 
 ### 安装musl
-这个是获取符号表必须的。
 ``` bash
 wget https://musl.cc/riscv64-linux-musl-cross.tgz
 tar -xf riscv64-linux-musl-cross.tgz
@@ -28,3 +27,8 @@ tar -xf riscv64-linux-musl-cross.tgz
 
 ### 配置vscode
 如果要让rust-analyzer默认使用riscv架构，需要在设置里更改cargo的target，设置里找到这项后会打开对应位置的vscode配置json，输入`"rust-analyzer.cargo.target": "riscv64gc-unknown-none-elf"`即可。
+
+## backtrace
+实现了带debuginfo的backtrace。
+
+编译的时候把zcore的elf放到文件系统里，backtrace的时候就可以直接从这个文件读取debuginfo了。把gimli集成到了内核里进行parse。
