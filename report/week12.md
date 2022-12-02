@@ -32,3 +32,5 @@ tar -xf riscv64-linux-musl-cross.tgz
 实现了带debuginfo的backtrace。
 
 编译的时候把zcore的elf放到文件系统里，backtrace的时候就可以直接从这个文件读取debuginfo了。把gimli集成到了内核里进行parse。
+
+这个过程比较曲折，一开始是想直接用gimli官方例子里的object库做parse，但是引入的时候发现object库有一个依赖memchr，这个库虽然可以no_std，但是由于cargo的一些魔法，编译的时候这个库会enable std的feature，找到了[这个issue](https://github.com/Geal/nom/issues/1457)。里面说要把cargo的version给fix到2021.但是zCore是很多个库连接在一起，有的是2018，有的是2021，也没法一个一个fix，所以就放弃了，直接换成zcore里用的xmas-elf。这个bug也是让我体会到了rust的神奇。
