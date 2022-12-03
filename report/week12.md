@@ -80,4 +80,18 @@ Disassembly of section maps:
        2:	00	<unknown>
 ```
 
-可以看出来，这里r0是通过skb重定位得到xdp_stats_map地址的。具体如何实现还需要进一步研究。可能需要借助BTF相关的内容。 
+https://docs.kernel.org/bpf/llvm_reloc.html
+
+根据叶圣的指导，这一部分实际上就是一个结构体的数据，如下
+
+```c
+typedef struct
+{
+  Elf64_Addr    r_offset;  // Offset from the beginning of section.
+  Elf64_Xword   r_info;    // Relocation type and symbol index.
+} Elf64_Rel;
+```
+
+那这样的话，实际上就可以进行重定向。
+
+
