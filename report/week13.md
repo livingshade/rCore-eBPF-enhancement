@@ -61,3 +61,27 @@ eBPF map functions.`
 
 因此可以看出，支持这个并不需要内核的额外特殊的支持，只需要一个能够解析elf的用户态库即可。在linux中就是对应的libbpf，在用户态完成了所有的重定位工作，直接将字节码传给内核。
 
+但是目前不能直接用`libbpf`，因为在结构上有一定区别，一种方法是删一删`libbpf`提供一个较小的用户态装载库，但是可能是重复工作。
+
+## 文档和模块化的问题
+
+有一个问题是，因为ebpf需要一些OS层面的接口，所以不能很好的像其他的一样化成crate，希望得到一些建议。
+
+```rust
+
+pub fn os_current_time() -> u128 {
+    kernel_hal::timer::timer_now().as_nanos()
+}
+
+pub fn os_get_current_cpu() -> u8 {
+    kernel_hal::cpu::cpu_id()
+}
+
+pub fn os_copy_from_user(usr_addr: usize, kern_buf: *mut u8, len: usize) -> i32 {
+    let usr_ptr = usr_addr as *const u8;
+    copy(kern_buf, usr_ptr, len);
+    0
+}
+```
+
+类似于这种函数。虽然可以封装成一个`trait`，但是可能还是有一些问题。比如里面调用了`new`，默认是使用`global_allocator`,这一部分可能不是很方便。
