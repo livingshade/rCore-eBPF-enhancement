@@ -2,7 +2,9 @@
 
 ## Usage
 
-add dependencies in Cargo.toml to your project and change `osutils.rs` according to your OS.
+1. add dependencies in Cargo.toml to your project
+2. change `osutils.rs` according to your OS.
+3. If your OS dosen't use the trapframe crate, modify trapframe related functions in arch/{arch}/trapframe.rs accordingly.
 
 ## example
 
