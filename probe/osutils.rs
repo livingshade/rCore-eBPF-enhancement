@@ -7,6 +7,7 @@ lazy_static! {
     static ref KHANDLER: Mutex<Option<&'static dyn KernelHandler>> = Mutex::new(None);
 }
 
+/// PAGE_SIZE is required
 pub const PAGE_SIZE: usize = kernel_hal::PAGE_SIZE;
 
 /// optional function to initialize anything needed

@@ -4,6 +4,7 @@ use core::slice::from_raw_parts;
 use core::arch::global_asm;
 use alloc::sync::Arc;
 use super::{KProbeArgs, TrapFrame};
+use super::trapframe::*;
 
 #[no_mangle]
 pub extern "C" fn kprobes_test_ok(i: usize) {
@@ -17,7 +18,7 @@ extern "C" {
 }
 
 fn test_pre_handler(tf: &mut TrapFrame, _data: usize) -> isize {
-    let pc = tf.sepc;
+    let pc = get_trapframe_pc(tf);
     warn!("[KPROBE_PRE_HANDLER] pc = {:#x}", pc);
     0
 }

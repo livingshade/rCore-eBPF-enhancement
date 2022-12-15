@@ -1,6 +1,7 @@
 use super::kretprobes::{register_kretprobe};
 use alloc::sync::Arc;
 use super::{KRetProbeArgs, TrapFrame};
+use super::trapframe::*;
 
 #[inline(never)]
 fn recursive_fn(i: isize) -> isize {
@@ -13,12 +14,12 @@ fn recursive_fn(i: isize) -> isize {
 }
 
 fn test_entry_handler(tf: &mut TrapFrame, _data: usize) -> isize {
-    warn!("entering fn, a0 = {}", tf.general.a0);
+    warn!("entering fn, a0 = {}", get_reg(tf, 10));
     0
 }
 
 fn test_exit_handler(tf: &mut TrapFrame, _data: usize) -> isize {
-    warn!("exiting fn, a0 = {}", tf.general.a0);
+    warn!("exiting fn, a0 = {}", get_reg(tf, 10));
     0
 }
 
