@@ -1,5 +1,7 @@
 # Portable kprobe and ebpf module
 
+Ported from https://github.com/latte-c/rCore/tree/bpf/kernel
+
 ## Usage
 
 1. add dependencies in Cargo.toml to your project.
@@ -10,3 +12,5 @@
 ## example
 
 port on zCore: https://github.com/cubele/zCore
+
+port on rCore-Tutorial: https://github.com/cubele/rCore-Tutorial-Code-2022A/tree/main/os8
