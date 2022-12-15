@@ -9,17 +9,17 @@ fn recursive_fn(i: isize) -> isize {
         return 100;
     }
 
-    warn!("in recursive_fn({})", i);
+    println!("in recursive_fn({})", i);
     return i + recursive_fn(i + 1);
 }
 
 fn test_entry_handler(tf: &mut TrapFrame, _data: usize) -> isize {
-    warn!("entering fn, a0 = {}", get_reg(tf, 10));
+    println!("entering fn, a0 = {}", get_reg(tf, 10));
     0
 }
 
 fn test_exit_handler(tf: &mut TrapFrame, _data: usize) -> isize {
-    warn!("exiting fn, a0 = {}", get_reg(tf, 10));
+    println!("exiting fn, a0 = {}", get_reg(tf, 10));
     0
 }
 

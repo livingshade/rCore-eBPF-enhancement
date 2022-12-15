@@ -73,10 +73,6 @@ fn kretprobe_kprobe_pre_handler(tf: &mut TrapFrame, _data: usize) -> isize {
     let mut kretprobes = KRETPROBES.lock();
     let probe = kretprobes.get_mut(&pc).unwrap();
     if probe.nr_instances >= probe.instance_limit {
-        error!(
-            "[kretprobe] number of instances for entry {:#x} reaches limit",
-            pc
-        );
         probe.nr_misses += 1;
         return 0;
     }
@@ -120,7 +116,6 @@ pub fn kretprobe_trap_handler(tf: &mut TrapFrame) -> bool {
 /// register a kretprobe by registering a kprobe with kretprobe_kprobe_pre_handler as the handler
 pub fn register_kretprobe(entry_addr: usize, args: KRetProbeArgs) -> bool {
     if !register_kprobe(entry_addr, KProbeArgs::from(kretprobe_kprobe_pre_handler)) {
-        error!("[kretprobe] failed to register kprobe.");
         return false;
     }
 
@@ -138,10 +133,6 @@ pub fn unregister_kretprobe(entry_addr: usize) -> bool {
     let mut kretprobes = KRETPROBES.lock();
     if let Some(probe) = kretprobes.get(&entry_addr) {
         if probe.nr_instances > 0 {
-            error!(
-                "cannot remove kretprobe for address {:#x} as it is still active",
-                entry_addr
-            );
             false
         } else {
             let ok = unregister_kprobe(entry_addr);

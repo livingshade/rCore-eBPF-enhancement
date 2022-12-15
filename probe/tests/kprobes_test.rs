@@ -8,7 +8,7 @@ use super::trapframe::*;
 
 #[no_mangle]
 pub extern "C" fn kprobes_test_ok(i: usize) {
-    info!("[Kprobes test] {} OK", i);
+    println!("[Kprobes test] {} OK", i);
 }
 
 extern "C" {
@@ -19,17 +19,17 @@ extern "C" {
 
 fn test_pre_handler(tf: &mut TrapFrame, _data: usize) -> isize {
     let pc = get_trapframe_pc(tf);
-    warn!("[KPROBE_PRE_HANDLER] pc = {:#x}", pc);
+    println!("[KPROBE_PRE_HANDLER] pc = {:#x}", pc);
     0
 }
 
 fn test_post_handler(_tf: &mut TrapFrame, _data: usize) -> isize {
-    warn!("[KPROBE_POST_HANDLER] post handler invoked");
+    println!("[KPROBE_POST_HANDLER] post handler invoked");
     0
 }
 
 pub fn run_kprobes_tests() {
-    info!("running kprobes tests");
+    println!("running kprobes tests");
     unsafe {
         let nr_tests = *(kprobes_test_fn_count as *const i32) as usize;
         let test_fns = from_raw_parts(kprobes_test_fns as *const fn(usize), nr_tests);
@@ -44,7 +44,7 @@ pub fn run_kprobes_tests() {
             f(0);
         }
     }
-    info!("kprobes tests finished");
+    println!("kprobes tests finished");
 }
 
 global_asm!(include_str!("test.S"));

@@ -98,7 +98,6 @@ pub fn kprobe_trap_handler(tf: &mut TrapFrame) -> bool {
         return true;
     }
 
-    // TODO: remove this map
     // post_handler stage
     if let Some(orig_addr) = ADDR_MAP.lock().get(&pc) {
         let probe = map.get_mut(orig_addr).unwrap();
@@ -118,21 +117,15 @@ pub fn kprobe_trap_handler(tf: &mut TrapFrame) -> bool {
 pub fn register_kprobe(addr: usize, args: KProbeArgs) -> bool {
     let mut map = KPROBES.lock();
     if map.contains_key(&addr) {
-        error!("kprobe for address {:#x} already exist", addr);
         return false;
     }
 
     let insn_type = get_insn_type(addr);
     if insn_type == SingleStepType::Unsupported {
-        error!("target instruction is not supported");
         return false;
     }
 
     let emulate = insn_type == SingleStepType::Emulate;
-    info!(
-        "register kprobe at {:#x}",
-        addr,
-    );
     let probe = KProbe::new(
         addr,
         args.pre_handler,
@@ -143,14 +136,8 @@ pub fn register_kprobe(addr: usize, args: KProbeArgs) -> bool {
     // bp in inst buffer, will be executed if inst not emulated
     let next_bp_addr = probe.insn_buf.addr() + probe.insn_len;
     probe.arm();
-    // TODO: change logic
     ADDR_MAP.lock().insert(next_bp_addr, addr);
     map.insert(addr, probe);
-    info!(
-        "kprobe for address {:#x} inserted. {} kprobes has been registered",
-        addr,
-        map.len()
-    );
     true
 }
 
@@ -160,10 +147,6 @@ pub fn unregister_kprobe(addr: usize) -> bool {
     let mut map = KPROBES.lock();
     if let Some(probe) = map.get(&addr) {
         if probe.active_count > 0 {
-            error!(
-                "cannot remove kprobe for address {:#x} as it is still active",
-                addr
-            );
             false
         } else {
             probe.disarm();

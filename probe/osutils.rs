@@ -15,8 +15,8 @@ pub fn init_osutils(handler: &'static dyn KernelHandler) {
     KHANDLER.lock().replace(handler);
 }
 
-/// Allocate a page of memory, return virtual address
-/// The page need to be readable, writable and executable
+/// Allocate a page of memory in kernel, return virtual address
+/// The page need to be readable, writable and executable by the kernel
 pub fn alloc_page() -> usize {
     let pa = KHANDLER.lock().unwrap().frame_alloc().unwrap();
     let va = phys_to_virt(pa);
@@ -29,7 +29,7 @@ pub fn dealloc_page(va: usize) {
     KHANDLER.lock().unwrap().frame_dealloc(pa);
 }
 
-/// Copy memory from src to dst, both src and dst are virtual address in kernel
+/// Copy memory from src to dst, both src and dst are virtual addresses in kernel
 pub fn byte_copy(dst_addr: usize, src_addr: usize, len: usize) {
     pmem_copy(virt_to_phys(dst_addr),
                 virt_to_phys(src_addr),
