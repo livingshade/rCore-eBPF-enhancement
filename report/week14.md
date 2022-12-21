@@ -1,6 +1,6 @@
 ## kprobes移植
 
-提取了OS相关部分，包括一些辅助函数与trapframe。
+提取了OS相关部分，包括一些辅助函数与trapframe。文档正在推进。
 
 在移植rcore tutorial的时候发现一个bug：在内核ebreak的时候本来应该直接panic：
 
