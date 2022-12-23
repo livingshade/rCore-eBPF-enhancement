@@ -30,6 +30,7 @@ pub fn dealloc_page(va: usize) {
 }
 
 /// Copy memory from src to dst, both src and dst are virtual addresses in kernel
+/// TODO: this is actually independent of OS, can be removed
 pub fn byte_copy(dst_addr: usize, src_addr: usize, len: usize) {
     pmem_copy(virt_to_phys(dst_addr),
                 virt_to_phys(src_addr),
